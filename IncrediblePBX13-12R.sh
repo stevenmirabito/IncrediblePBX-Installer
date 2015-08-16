@@ -144,7 +144,7 @@ yum -y install net-tools wget nano kernel-devel kernel-headers
 mkdir -p /etc/pbx
 
 # Installing packages needed to work with Asterisk
-yum -y install glibc* yum-fastestmirror opens* anaconda* poppler-utils perl-Digest-SHA1 perl-Crypt-SSLeay xorg-x11-drv-qxl dialog binutils* mc sqlite sqlite-devel libstdc++-devel tzdata SDL* syslog-ng syslog-ng-libdbi texinfo uuid-devel libuuid-devel
+yum -y install glibc* yum-fastestmirror opens* anaconda* poppler-utils perl-Digest-SHA1 perl-Crypt-SSLeay xorg-x11-drv-qxl dialog binutils* mc sqlite sqlite-devel libstdc++-devel tzdata SDL* syslog-ng syslog-ng-libdbi texinfo uuid-devel libuuid-devel perl-LWP-Protocol-https
 yum -y install cairo* atk* freetds freetds-devel
 yum -y groupinstall additional-devel base cifs-file-server compat-libraries console-internet core debugging development mail-server ftp-server hardware-monitoring java-platform legacy-unix mysql network-file-system-client network-tools php performance perl-runtime security-tools server-platform server-policy system-management system-admin-tools web-server
 yum -y install redhat-lsb-core epel-release # EPEL is required to install fail2ban from packages
