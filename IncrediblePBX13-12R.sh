@@ -734,6 +734,7 @@ rm -f /root/incrediblefax11_ubuntu14.sh
 if [[ "$release" = "7" ]]; then
     mv /usr/local/sbin/status /usr/local/sbin/status6
     cp -p /root/status7 /usr/local/sbin/status
+    chmod +x /usr/local/sbin/status
     systemctl stop firewalld
     systemctl mask firewalld
     yum -y install iptables-services
