@@ -29,21 +29,11 @@
 # removed test for Incredible
 # Install Fax
 
-COLOR=`cat /etc/pbx/.color`
-if [ -z "$COLOR" ]
-then
- echo "Sorry. This installer requires PBX in a Flash 2.0.6.3.1 or later."
-fi
-if [ "$COLOR" != "GREEN" ]
-then
- echo "Sorry. This installer requires PIAF-Green with CentOS 6.3 or 6.4."
-fi
-
 clear
 echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 echo "WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING"
 echo "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-echo "This script installs Hylafax/Avantfax/IAXmodem on PIAF-Green systems only!"
+echo "This script installs Hylafax/Avantfax/IAXmodem on CentOS 7 systems only!"
 echo " "
 echo "You first will need to enter the email address for delivery of incoming faxes." 
 echo " "
@@ -54,112 +44,92 @@ echo "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 read -p "Press any key to continue or ctrl-C to exit"
 
 clear
-echo -n "Enter EMAIL address for delivery of incoming faxes: "
+echo -n "Enter the email address for delivery of incoming faxes: "
 read faxemail
-echo "FAX EMail Address: $faxemail"
+echo -n "Enter your Asterisk user database password: "
+read MYSQLASTERISKUSERPASSWORD
+echo -n "Enter your MySQL root password: "
+read MYSQLROOTPASS
+echo " "
+echo "Fax email Address: $faxemail"
+echo "Asterisk user database password: $MYSQLASTERISKUSERPASSWORD"
+echo "MySQL root password: $MYSQLROOTPASS"
 read -p "If this is correct, press any key to continue or ctrl-C to exit"
 clear
 
-#Change passw0rd below for your MySQL asteriskuser password if you have changed it from the default.
-MYSQLASTERISKUSERPASSWORD=amp109
+cd /usr/src
 
-
-LOAD_LOC=/usr/src/
-
-cd $LOAD_LOC
-
-# install some dependencies
+# Install some dependencies
 yum -y install ghostscript ghostscript-fonts sharutils perl-CGI
 
-#Install Hylafax first so that the directories are in place
-#processor=`uname -i`
-#centos=${processor:1:3}
-#if [ $centos != 386 ]
-#then
-# wget ftp://ftp.pbone.net/mirror/ftp.sourceforge.net/pub/sourceforge/h/hy/hylafax/hylafax%20CentOS%205%20RPM/hylafax-5.4.3-1.x86_64.rpm
-# rpm -Uvh $LOAD_LOC/hylafax-5.4.3-1.x86_64.rpm
-#else
-# wget ftp://ftp.pbone.net/mirror/ftp.sourceforge.net/pub/sourceforge/h/hy/hylafax/hylafax%20CentOS%205%20RPM/hylafax-5.5.0-1.i386.rpm
-# rpm -Uvh $LOAD_LOC/hylafax-5.5.0-1.i386.rpm
-#fi
+# Install Hylafax from packages
+yum -y install hylafax*
+systemctl enable hylafax-faxq.service
+systemctl enable hylafax-hfaxd.service
 
-# updated to hylafax+ to remove future problems if orig HylaFax is someday released for CentOS 6.x
-if [ $centos != 386 ]
-then
- yum -y install hylafax*
- mv /etc/init.d/hylafax+ /etc/init.d/hylafax
-else
- yum -y install hylafax
-fi
-chkconfig --add hylafax
-chkconfig --add hylafax+
-chkconfig hylafax on
-chkconfig hylafax+ on
-
+# Download tarballs
 wget http://sourceforge.net/projects/iaxmodem/files/iaxmodem/iaxmodem-1.2.0/iaxmodem-1.2.0.tar.gz
 wget http://garr.dl.sourceforge.net/project/avantfax/avantfax-3.3.3.tgz
 
-
-#INstall IAXMODEMS 0->3
+# Install IAXMODEMS 0->3
 
 cd /usr/src
-tar zxfv $LOAD_LOC/iaxmodem-1.2.0.tar.gz
+tar zxfv iaxmodem-1.2.0.tar.gz
 cd iaxmodem-1.2.0
 ./configure
 make
-mkdir /etc/iaxmodem/
 
+mkdir /etc/iaxmodem/
 mkdir /var/log/iaxmodem
 touch /var/log/iaxmodem/iaxmodem.log
 
 COUNT=0
 while [ $COUNT -lt 4 ]; do
-       echo "Number = $COUNT"
-       touch /etc/iaxmodem/iaxmodem-cfg.ttyIAX$COUNT
+	# Configure Modems
+	echo "Number = $COUNT"
+	touch /etc/iaxmodem/iaxmodem-cfg.ttyIAX$COUNT
 	touch /var/log/iaxmodem/iaxmodem-cfg.ttyIAX$COUNT
-       echo "
-device /dev/ttyIAX$COUNT
-owner uucp:uucp
-mode 660
-port 457$COUNT
-refresh 300
-server 127.0.0.1
-peername iax-fax$COUNT
-cidname Incredible PBX
-cidnumber +0000000000$COUNT
-codec ulaw
-" > /etc/iaxmodem/iaxmodem-cfg.ttyIAX$COUNT
+	echo "
+	device /dev/ttyIAX$COUNT
+	owner uucp:uucp
+	mode 660
+	port 457$COUNT
+	refresh 300
+	server 127.0.0.1
+	peername iax-fax$COUNT
+	cidname Incredible PBX
+	cidnumber +0000000000$COUNT
+	codec ulaw
+	" > /etc/iaxmodem/iaxmodem-cfg.ttyIAX$COUNT
+	
+	# Setup IAX Registrations
+	echo "
+	[iax-fax$COUNT]
+	type=friend
+	host=127.0.0.1
+	port=457$COUNT
+	context=from-fax
+	requirecalltoken=no
+	disallow=all
+	allow=ulaw
+	jitterbuffer=no
+	qualify=yes
+	deny=0.0.0.0/0.0.0.0
+	permit=127.0.0.1/255.255.255.0
+	" >> /etc/asterisk/iax_custom.conf
+	
+	# Setup Hylafax Modems
+	cp /usr/src/iaxmodem-1.2.0/config.ttyIAX /var/spool/hylafax/etc/config.ttyIAX$COUNT
+	
+	echo "
+	t$COUNT:23:respawn:/usr/sbin/faxgetty ttyIAX$COUNT > /var/log/iaxmodem/iaxmodem.log
+	" >> /etc/inittab
 
-#Setup IAX Registrations
-echo "
-[iax-fax$COUNT]
-type=friend
-host=127.0.0.1
-port=457$COUNT
-context=from-fax
-requirecalltoken=no
-disallow=all
-allow=ulaw
-jitterbuffer=no
-qualify=yes
-deny=0.0.0.0/0.0.0.0
-permit=127.0.0.1/255.255.255.0
-" >> /etc/asterisk/iax_custom.conf
-
-#Setup Hylafax Modems
-cp /usr/src/iaxmodem-1.2.0/config.ttyIAX /var/spool/hylafax/etc/config.ttyIAX$COUNT
-
-echo "
-t$COUNT:23:respawn:/usr/sbin/faxgetty ttyIAX$COUNT > /var/log/iaxmodem/iaxmodem.log
-" >> /etc/inittab
-
-
-COUNT=$((COUNT + 1))
+	COUNT=$((COUNT + 1))
 done
 
 chown -R uucp:uucp /etc/iaxmodem/
 chown uucp:uucp /var/spool/hylafax/etc/config.ttyIAX*
-
 
 touch /etc/logrotate.d/iaxmodem
 echo "
@@ -181,8 +151,7 @@ chkconfig --add iaxmodem
 chkconfig iaxmodem on
 /etc/init.d/iaxmodem start
 
-
-#Configure Hylafax
+# Configure Hylafax
 touch /var/spool/hylafax/etc/FaxDispatch
 echo "
 case "$DEVICE" in
@@ -210,8 +179,7 @@ exten => s,n,Busy
 exten => s,n,Hangup
 " >> /etc/asterisk/extensions_custom.conf
 
-
-RESULT=`/usr/bin/mysql -uasteriskuser -p$MYSQLASTERISKUSERPASSWORD <<SQL
+RESULT=`/usr/bin/mysql -uasteriskuser -p${MYSQLASTERISKUSERPASSWORD} <<SQL
 
 use asterisk
 INSERT INTO custom_destinations 
@@ -248,27 +216,31 @@ yum -y update php-pear-Auth-SASL
 
 faxsetup
 
-#Install Avantfax
-cd $LOAD_LOC
-tar zxfv $LOAD_LOC/avantfax*.tgz
+# Install Avantfax
+cd /usr/src
+tar zxfv avantfax*.tgz
 cd avantfax-3.3.3
 # Some sed commands to set the preferences
-sed -i 's/ROOTMYSQLPWD=/ROOTMYSQLPWD=passw0rd/g'  $LOAD_LOC/avantfax-3.3.3/rh-prefs.txt
-sed -i 's/apache/asterisk/g'  $LOAD_LOC/avantfax-3.3.3/rh-prefs.txt
-sed -i 's/fax.mydomain.com/pbx.local/g'  $LOAD_LOC/avantfax-3.3.3/rh-prefs.txt
-sed -i 's/INSTDIR=\/var\/www\/avantfax/INSTDIR=\/var\/www\/html\/avantfax/g'  $LOAD_LOC/avantfax-3.3.3/rh-prefs.txt
+sed -i "s/ROOTMYSQLPWD=/ROOTMYSQLPWD=${MYSQLROOTPASS}/g" /usr/src/avantfax-3.3.3/rh-prefs.txt
+sed -i 's/apache/asterisk/g' /usr/src/avantfax-3.3.3/rh-prefs.txt
+sed -i 's/fax.mydomain.com/pbx.local/g' /usr/src/avantfax-3.3.3/rh-prefs.txt
+sed -i 's/INSTDIR=\/var\/www\/avantfax/INSTDIR=\/var\/www\/html\/avantfax/g' /usr/src/avantfax-3.3.3/rh-prefs.txt
+sed -i 's|rh-prefs.txt|/usr/src/avantfax-3.3.3/rh-prefs.txt|g' /usr/src/avantfax-3.3.3/rh-install.sh
 
-sed -i 's|rh-prefs.txt|/usr/src/avantfax-3.3.3/rh-prefs.txt|g'  $LOAD_LOC/avantfax-3.3.3/rh-install.sh
+# Patch the installer for CentOS 7
+sed -i 's|mysql-server|mariadb-server|g' /usr/src/avantfax-3.3.3/rh-install.sh
+sed -i 's|vixie-cron|cronie|g' /usr/src/avantfax-3.3.3/rh-install.sh
 
+# Run the installer
 ./rh-install.sh
 
+# Remove the installed Apache config
 rm -rf /etc/httpd/conf.d/avantfax.conf
 
 # Add a menu item to kennonsoft interface
-#copy in the picture
-cd $LOAD_LOC
+cd /usr/src
 wget http://incrediblepbx.com/ico_fax.png
-mv $LOAD_LOC/ico_fax.png /var/www/html/welcome/ico_fax.png
+mv /usr/src/ico_fax.png /var/www/html/welcome/ico_fax.png
 sed -i '/asteridex/ i\1,Fax,./avantfax,Avantfax,ico_fax.png' /var/www/html/welcome/.htindex.cfg
 
 chown -R asterisk:asterisk /var/lib/php/session/
@@ -283,8 +255,7 @@ service httpd restart
 
 asterisk -rx "module reload"
 
-
-mysql -uroot -ppassw0rd avantfax <<EOF
+mysql -uroot -p${MYSQLROOTPASS} avantfax <<EOF
 use avantfax;
 update UserAccount set username="maint" where uid=1;
 update UserAccount set can_del=1 where uid=1;
@@ -304,10 +275,10 @@ sed -i 's|NVfaxdetect(5)|Goto(custom-fax-iaxmodem,s,1)|g' /etc/asterisk/extensio
 
 asterisk -rx "dialplan reload"
 
-cd $LOAD_LOC
+cd /usr/src
 wget http://incrediblepbx.com/hylafax_mod-1.8.2.wbm.gz
 
-cd /usr/share/ghostscript/8.70/Resource/Init
+cd /usr/share/ghostscript/*/Resource/Init
 mv Fontmap.GS Fontmap.GS.orig
 wget http://incrediblepbx.com/Fontmap.GS
 
@@ -347,7 +318,7 @@ sed -i "s/root@localhost/$faxemail/" /var/www/html/avantfax/includes/config.php
 chmod 1777 /tmp
 chmod 555 /
 
-# needed for WebMin module
+# needed for Webmin module
 perl -MCPAN -e 'install CGI'
 
 echo "/usr/sbin/faxgetty -D ttyIAX0" >> /etc/rc.d/rc.local
@@ -371,8 +342,7 @@ amportal a ma install avantfax
 amportal a r
 
 ln -s /usr/sbin/faxgetty /usr/local/sbin/faxgetty
-mysql -u root -ppassw0rd -e "UPDATE  avantfax.UserAccount SET  username =  'admin' WHERE  avantfax.UserAccount.uid =1;"
-gui-fix
+mysql -u root -p${MYSQLROOTPASS} -e "UPDATE  avantfax.UserAccount SET  username =  'admin' WHERE  avantfax.UserAccount.uid =1;"
 
 cd /root
 
