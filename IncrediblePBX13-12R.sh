@@ -777,6 +777,9 @@ cp -p goo* /var/lib/asterisk/agi-bin/.
 find /root/ -type f -print0 | xargs -0 sed -i "s/passw0rd/${ADMIN_PASS}/g"
 find /root/ -type f -print0 | xargs -0 sed -i "s/amp109/${ASTERISK_DB_PW}/g"
 
+# Patch phpMyAdmin config
+sed -i "s|'config'|'cookie'|" /var/www/html/maint/phpMyAdmin/config.inc.php
+
 clear
 echo "Knock ports for access to $publicip set to TCP: $knock1 $knock2 $knock3" > /root/knock.FAQ
 echo "UPnP activation attempted for UDP 5060 and your knock ports above." >> /root/knock.FAQ
